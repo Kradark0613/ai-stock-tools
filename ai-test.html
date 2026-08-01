@@ -53,34 +53,38 @@
 
 <script>
 async function fetchQuote(code) {
-  const market = ['0','3'].includes(code[0]) ? 0 : 1;
-  const fields = 'f43,f44,f45,f46,f47,f48,f50,f51,f58,f60,f116,f117,f162,f168,f170';
-  const r = await fetch(`https://push2.eastmoney.com/api/qt/stock/get?secid=${market}.${code}&fields=${fields}`);
-  const j = await r.json();
-  if (!j || !j.data) return null;
-  const d = j.data;
-  return {
-    name: d.f58, price: (d.f43/100).toFixed(2), open: (d.f46/100).toFixed(2),
-    high: (d.f44/100).toFixed(2), low: (d.f45/100).toFixed(2),
-    prevClose: (d.f60/100).toFixed(2),
-    changePct: d.f60 ? ((d.f43-d.f60)/d.f60*100).toFixed(2) : 0,
-    amount: (d.f48/1e8).toFixed(2),
-    pe: d.f162 ? (d.f162/100).toFixed(2) : '-',
-    pb: d.f170 ? (d.f170/100).toFixed(2) : '-',
-    turnover: d.f168 ? (d.f168/100).toFixed(2) : '-',
-    amplitude: d.f51 ? (d.f51/100).toFixed(2) : '-',
-    volumeRatio: d.f50 ? (d.f50/100).toFixed(2) : '-',
-    totalCap: d.f116 ? (d.f116/1e8).toFixed(0) : '-',
-  };
+  const prefix = ['0','3'].includes(code[0]) ? 'sz' : 'sh';
+  try {
+    const r = await fetch(`https://qt.gtimg.cn/q=${prefix}${code}`);
+    const buf = await r.arrayBuffer();
+    const text = new TextDecoder('gbk').decode(buf);
+    const m = text.match(/\"([^\"]+)\"/);
+    if (!m) return null;
+    const p = m[1].split('~');
+    if (!p[1]) return null;
+    const price = parseFloat(p[3]);
+    return {
+      name: p[1], price: price.toFixed(2), open: (parseFloat(p[5])||price).toFixed(2),
+      high: (parseFloat(p[33])||price).toFixed(2), low: (parseFloat(p[34])||price).toFixed(2),
+      prevClose: (parseFloat(p[4])||price).toFixed(2),
+      changePct: p[32] || '0',
+      amount: (parseFloat(p[37])||0) > 10000 ? (parseFloat(p[37])/10000).toFixed(2) : (parseFloat(p[37])||0).toFixed(2),
+      pe: p[39] && parseFloat(p[39])>0 ? parseFloat(p[39]).toFixed(2) : '-',
+      pb: '-', turnover: p[38] ? parseFloat(p[38]).toFixed(2) : '-',
+      amplitude: p[43] ? parseFloat(p[43]).toFixed(2) : '-',
+      volumeRatio: '-', totalCap: p[44] ? parseFloat(p[44]).toFixed(0) : '-',
+    };
+  } catch(e) { return null; }
 }
 
 async function fetchKlines(code) {
-  const market = ['0','3'].includes(code[0]) ? 0 : 1;
-  const r = await fetch(`https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=${market}.${code}&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58&klt=101&fqt=1&end=20500101&lmt=20`);
-  const j = await r.json();
-  return (j.data?.klines || []).map(l => l.split(',')).map(p => ({
-    date: p[0], open: p[1], close: p[2], high: p[3], low: p[4],
-  }));
+  const prefix = ['0','3'].includes(code[0]) ? 'sz' : 'sh';
+  try {
+    const r = await fetch(`https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=${prefix}${code},day,,,20,qfq`);
+    const j = await r.json();
+    const data = j.data?.[`${prefix}${code}`]?.day || j.data?.[`${prefix}${code}`]?.qfqday || [];
+    return data.map(d => ({ date: d[0], open: d[1], close: d[2], high: d[3], low: d[4] }));
+  } catch(e) { return []; }
 }
 
 async function fetchNews(code) {

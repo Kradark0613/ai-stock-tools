@@ -335,24 +335,36 @@ async function loadIndices() {
 // QUOTES
 // ==============================
 async function fetchQuote(code, market) {
-  const secid = `${market}.${code}`;
-  const fields = 'f43,f44,f45,f46,f47,f48,f50,f51,f58,f60,f116,f117,f162,f167,f168,f169,f170';
+  // Try Tencent first (more reliable, never blocks)
+  return fetchQuoteFromTencent(code, market);
+}
+
+async function fetchQuoteFromTencent(code, market) {
+  const prefix = market === 1 ? 'sh' : 'sz';
   try {
-    const resp = await fetch(`https://push2.eastmoney.com/api/qt/stock/get?secid=${secid}&fields=${fields}`);
-    const json = await resp.json();
-    if (!json || !json.data) return null;
-    const d = json.data;
+    const resp = await fetch(`https://qt.gtimg.cn/q=${prefix}${code}`);
+    const buf = await resp.arrayBuffer();
+    const text = new TextDecoder('gbk').decode(buf);
+    const match = text.match(/\"([^\"]+)\"/);
+    if (!match) return null;
+    const p = match[1].split('~');
+    // Fields: 1=name,3=price,4=prevClose,5=open,32=changePct,33=high,34=low,37=amount(万),38=turnover,39=PE,43=amplitude,44=totalCap(亿)
+    if (!p[1]) return null;
+    const price = parseFloat(p[3]);
+    const prevClose = parseFloat(p[4]);
     return {
-      code, name: d.f58 || code, price: (d.f43||0)/100, open: (d.f46||0)/100,
-      prevClose: (d.f60||0)/100, change: ((d.f43||0)-(d.f60||0))/100,
-      changePct: d.f60 ? (((d.f43-d.f60)/d.f60)*100).toFixed(2) : 0,
-      volume: (d.f47||0)/10000, amount: (d.f48||0)/10000,
-      high: (d.f44||0)/100, low: (d.f45||0)/100,
-      amplitude: d.f51 ? (d.f51/100).toFixed(2) : null,
-      volumeRatio: d.f50 ? (d.f50/100).toFixed(2) : null,
-      pe: d.f162 ? (d.f162/100).toFixed(2) : null, pb: d.f170 ? (d.f170/100).toFixed(2) : null,
-      turnover: d.f168 ? (d.f168/100).toFixed(2) : null,
-      totalCap: d.f116 ? (d.f116/100000000).toFixed(0) : null, floatCap: d.f117 ? (d.f117/100000000).toFixed(0) : null,
+      code, name: p[1], price,
+      open: parseFloat(p[5]) || price, high: parseFloat(p[33]) || price,
+      low: parseFloat(p[34]) || price, prevClose,
+      change: price - prevClose,
+      changePct: p[32] || '0',
+      volume: parseFloat(p[6]) / 100 || 0,
+      amount: parseFloat(p[37]) || 0,
+      pe: p[39] && parseFloat(p[39]) > 0 ? parseFloat(p[39]).toFixed(2) : null,
+      pb: null, turnover: p[38] ? parseFloat(p[38]).toFixed(2) : null,
+      amplitude: p[43] ? parseFloat(p[43]).toFixed(2) : null,
+      volumeRatio: null, totalCap: p[44] ? parseFloat(p[44]).toFixed(0) : null,
+      floatCap: null,
     };
   } catch(e) { return null; }
 }
@@ -542,16 +554,17 @@ function calcMA(data, period) {
 }
 
 async function fetchKline(code, market, period) {
-  const secid = `${market}.${code}`;
-  const klt = { day:101, week:102, month:103 }[period] || 101;
+  const prefix = market === 1 ? 'sh' : 'sz';
+  const periodMap = { day:'day', week:'week', month:'month' };
+  const ktype = periodMap[period] || 'day';
   try {
-    const resp = await fetch(`https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=${secid}&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61&klt=${klt}&fqt=1&end=20500101&lmt=${KLINE_DAYS}`);
+    const resp = await fetch(`https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=${prefix}${code},${ktype},,,${KLINE_DAYS},qfq`);
     const json = await resp.json();
-    if (!json || !json.data || !json.data.klines) return [];
-    return json.data.klines.map(line => {
-      const p = line.split(',');
-      return { time: p[0], open: parseFloat(p[1]), close: parseFloat(p[2]), high: parseFloat(p[3]), low: parseFloat(p[4]), volume: parseFloat(p[5]), amount: parseFloat(p[6]) };
-    });
+    const rows = json.data?.[`${prefix}${code}`]?.[`qfq${ktype}`] || json.data?.[`${prefix}${code}`]?.[ktype] || [];
+    return rows.map(d => ({
+      time: d[0], open: parseFloat(d[1]), close: parseFloat(d[2]),
+      high: parseFloat(d[3]), low: parseFloat(d[4]), volume: parseFloat(d[5]) || 0,
+    }));
   } catch(e) { return []; }
 }
 
