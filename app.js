@@ -112,34 +112,42 @@ const AI_API_URL = 'https://api.siliconflow.cn/v1/chat/completions';
 const AI_MODEL = 'Qwen/Qwen2.5-7B-Instruct';
 
 function buildAIPrompt(code, quote, klines, newsSummary) {
-  const klineText = (klines || []).map(k =>
-    `${k.date} 开${k.open} 收${k.close} 高${k.high} 低${k.low}`
-  ).join('\n');
+  const klineText = (klines || []).slice(-60).map(k =>
+    `${k.date} 开${k.open} 收${k.close} 高${k.high} 低${k.low} 量${(k.volume/10000).toFixed(1)}万手`
+  ).join('|');
 
-  return `你是专业A股分析师。以下是股票${quote.name}(${code})的实时数据，请生成一份简明深度分析报告，包括：基本面、技术面、资金面、消息面、风险提示、综合建议。控制600字以内。
+  return `你是一位资深A股分析师，请对股票${quote.name}(${code})生成一份专业深度分析报告。要求六大维度，每个维度200字以上，总报告1200字以上。用数据说话，给出明确判断，不要模棱两可。
 
-【实时行情】现价${quote.price} 涨跌${quote.changePct}% 今开${quote.open} 最高${quote.high} 最低${quote.low} 昨收${quote.prevClose}
-成交${quote.amount}亿 换手${quote.turnover}% 振幅${quote.amplitude}% 量比${quote.volumeRatio}
-PE${quote.pe} PB${quote.pb} 总市值${quote.totalCap}亿
+【实时行情】
+现价${quote.price} | 涨跌${quote.changePct}% | 今开${quote.open} | 昨收${quote.prevClose}
+最高${quote.high} | 最低${quote.low} | 成交${quote.amount}亿 | 换手${quote.turnover}%
+振幅${quote.amplitude}% | 量比${quote.volumeRatio} | PE(TTM)${quote.pe} | PB${quote.pb} | 总市值${quote.totalCap}亿
 
-【近20日K线】
-${klineText}
+【近60日K线】日期 开 收 高 低 量
+${klineText || '暂无'}
 
-【近期资讯】${newsSummary || '暂无'}
+【近期资讯】
+${newsSummary || '暂无'}
 
-请用中文回复，格式：
-**基本面**
-...（估值水平、业绩趋势）
-**技术面**
-...（K线形态、均线、支撑压力）
-**资金面**
-...（成交量、换手率、资金动向）
-**消息面**
-...（近期事件影响）
-**风险提示**
-...（主要风险点）
-**综合建议**
-...（一句话结论）`;
+请严格按以下六大维度输出报告（每个维度必须有小标题和150字以上分析）：
+
+**一、基本面分析**
+从最新财报数据、估值水平（PE/PB与历史分位对比）、行业竞争地位三个角度分析。明确指出当前估值是偏高还是偏低，给出判断依据。
+
+**二、技术面分析**
+从K线形态（近60日趋势）、均线系统（是否有金叉/死叉信号）、支撑压力位三个角度分析。结合成交量变化判断多空力量。
+
+**三、资金面分析**
+从换手率、量比、成交额判断当前资金活跃度。结合量价关系分析主力动向。如果换手率异常（>5%或<0.5%），重点说明原因。
+
+**四、消息舆情分析**
+从近期公司公告、行业政策动向、市场情绪三个角度分析。区分利好利空，判断消息对股价的影响程度。
+
+**五、风险提示**
+列出3-5个具体风险点，包括估值风险、业绩风险、政策风险、市场风险、流动性风险等。每个风险点一句话说明。
+
+**六、短期走势预判与综合建议**
+结合以上五维分析，给出未来1-4周的走势预判（看多/震荡/看空）。给出具体操作建议（买入/持有/减仓/观望），并说明理由。`;
 }
 
 function callAI(prompt) {
@@ -147,7 +155,7 @@ function callAI(prompt) {
     const data = JSON.stringify({
       model: AI_MODEL,
       messages: [{ role: 'user', content: prompt }],
-      max_tokens: 1200, temperature: 0.5,
+      max_tokens: 2500, temperature: 0.5,
     });
     const req = https.request(AI_API_URL, {
       method: 'POST',

@@ -40,7 +40,7 @@
 <div class="container">
   <div class="header">
     <h1>AI 深度分析</h1>
-    <p>测试版 · SiliconFlow DeepSeek-V3</p>
+    <p>测试版 · SiliconFlow Qwen2.5 · 六维深度分析</p>
   </div>
 
   <div class="search-box">
@@ -80,10 +80,10 @@ async function fetchQuote(code) {
 async function fetchKlines(code) {
   const prefix = ['0','3'].includes(code[0]) ? 'sz' : 'sh';
   try {
-    const r = await fetch(`https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=${prefix}${code},day,,,20,qfq`);
+    const r = await fetch(`https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=${prefix}${code},day,,,60,qfq`);
     const j = await r.json();
-    const data = j.data?.[`${prefix}${code}`]?.day || j.data?.[`${prefix}${code}`]?.qfqday || [];
-    return data.map(d => ({ date: d[0], open: d[1], close: d[2], high: d[3], low: d[4] }));
+    const data = j.data?.[`${prefix}${code}`]?.qfqday || j.data?.[`${prefix}${code}`]?.day || [];
+    return data.map(d => ({ date: d[0], open: d[1], close: d[2], high: d[3], low: d[4], volume: parseInt(d[5]) || 0 }));
   } catch(e) { return []; }
 }
 
@@ -118,7 +118,7 @@ async function analyze() {
     updateStep('正在获取相关资讯...');
     const newsSummary = await fetchNews(code);
 
-    updateStep('AI 正在分析，约需 5-10 秒...');
+    updateStep('AI 正在生成六维分析报告，约需 10-20 秒...');
     const resp = await fetch('/api/ai-analyze', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -132,8 +132,10 @@ async function analyze() {
         <h3>${json.name}（${json.code}）深度分析报告</h3>
         ${json.report
           .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-          .replace(/\n\n/g, '</p><p>')
-          .replace(/\n/g, '<br>')}
+          .replace(/###\s*(.*)/g, '<h4>$1</h4>')
+          .replace(/##\s*(.*)/g, '<h4>$1</h4>')
+          .replace(/（([一二三四五六七八九十]+)）、/g, '<br><strong>（$1）</strong>')
+          .split('\n\n').filter(p => p.trim()).map(p => `<p>${p.replace(/\n/g, '<br>')}</p>`).join('')}
       </div>`;
   } catch (e) {
     result.innerHTML = `<div class="error-box">${e.message}</div>`;
