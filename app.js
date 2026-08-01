@@ -50,7 +50,7 @@ function fetchClsTelegraph() {
           if (json.errno === 0 && json.data && json.data.roll_data) {
             resolve(json.data.roll_data.map(item => ({
               title: item.title || '', content: item.content || item.brief || '',
-              time: item.ctime ? new Date(item.ctime * 1000).toLocaleString('zh-CN', { hour: '2-digit', minute: '2-digit' }) : '',
+              time: item.ctime ? new Date(item.ctime * 1000).toLocaleString('zh-CN', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Shanghai' }) : '',
               source: '财联社', category: detectCategory(item.title || '', item.content || ''), url: item.shareurl || '',
             })));
           } else { resolve([]); }
