@@ -94,10 +94,13 @@ function detectCategory(title, content) {
   return '行业动态';
 }
 
-async function getAllNews() {
+async function getAllNews(stockCode) {
   const results = [];
   try { const cls = await fetchClsTelegraph(); results.push(...cls); } catch (e) { console.error('CLS:', e.message); }
   try { const em = await fetchEastMoneyGlobalNews(); results.push(...em); } catch (e) { console.error('EM:', e.message); }
+  if (stockCode) {
+    try { const st = await fetchEastMoneyStockNews(stockCode); results.push(...st); } catch (e) { console.error('Stock:', e.message); }
+  }
   const seen = new Set();
   return results.filter(r => { if (seen.has(r.title)) return false; seen.add(r.title); return true; }).slice(0, 30);
 }
@@ -130,7 +133,8 @@ const server = http.createServer(async (req, res) => {
 
   if (url.pathname === '/api/news') {
     try {
-      const news = await getAllNews();
+      const stockCode = url.searchParams.get('stock') || '';
+      const news = await getAllNews(stockCode);
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
       res.end(JSON.stringify({ success: true, count: news.length, data: news, time: new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) }));
     } catch (e) {

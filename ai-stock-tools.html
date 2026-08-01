@@ -265,6 +265,7 @@
       <button onclick="switchKlinePeriod('month',this)">月K</button>
     </div>
     <div class="chart-wrap" id="klineChart"></div>
+    <div id="klineStockNews" style="padding:0 18px 14px;max-height:200px;overflow-y:auto;"></div>
   </div>
 </div>
 
@@ -500,6 +501,7 @@ async function openKline(code, name, market) {
   document.getElementById('klineCode').textContent = code;
   document.getElementById('klinePrice').textContent = '';
   document.getElementById('klineChart').innerHTML = '<div class="loading-text">加载K线数据...</div>';
+  document.getElementById('klineStockNews').innerHTML = '';
 
   const q = await fetchQuote(code, market);
   if (q) document.getElementById('klinePrice').textContent = q.price.toFixed(2);
@@ -511,6 +513,28 @@ async function openKline(code, name, market) {
   if (!klines.length) { document.getElementById('klineChart').innerHTML = '<div class="empty-state">暂无K线数据</div>'; return; }
 
   renderKlineChart(klines);
+
+  // Fetch stock news
+  loadStockNews(code);
+}
+
+async function loadStockNews(code) {
+  const container = document.getElementById('klineStockNews');
+  try {
+    const resp = await fetch(`${NEWS_PROXY}/api/news?stock=${code}`);
+    const json = await resp.json();
+    const stockNews = (json.data || []).filter(n => n.source === '东方财富' && n.category === '个股资讯').slice(0, 5);
+    if (!stockNews.length) { container.innerHTML = '<div style="padding:10px 0;font-size:12px;color:var(--text-muted);">暂无相关个股资讯</div>'; return; }
+    container.innerHTML = `
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;padding-top:8px;border-top:1px solid var(--border);">&#128240; 相关资讯</div>
+      ${stockNews.map(n => `
+        <div style="padding:6px 0;font-size:12px;border-bottom:1px solid rgba(255,255,255,0.03);">
+          <div style="color:var(--text-secondary);line-height:1.5;">${n.title}</div>
+          <div style="color:var(--text-muted);font-size:11px;margin-top:2px;">${n.time}</div>
+        </div>
+      `).join('')}
+    `;
+  } catch(e) { container.innerHTML = ''; }
 }
 
 function renderKlineChart(klines) {
