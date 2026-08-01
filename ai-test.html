@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI 深度分析 - 测试版</title>
+<style>
+  :root {
+    --bg-primary: #0f1117; --bg-secondary: #161822; --bg-card: #1a1d2e;
+    --border: #2a2d3e; --text-primary: #e8eaed; --text-secondary: #9aa0b4;
+    --text-muted: #5f6577; --accent-blue: #4b8bff; --accent-green: #00c853;
+    --accent-red: #ff3d57; --accent-orange: #ff9100;
+    --radius: 10px; --radius-sm: 6px;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    background: var(--bg-primary); color: var(--text-primary); min-height: 100vh;
+    display: flex; justify-content: center; padding: 40px 20px;
+  }
+  .container { max-width: 800px; width: 100%; }
+  .header { text-align: center; margin-bottom: 24px; }
+  .header h1 { font-size: 22px; margin-bottom: 4px; }
+  .header p { font-size: 13px; color: var(--text-muted); }
+
+  .search-box {
+    display: flex; gap: 10px; margin-bottom: 20px; justify-content: center;
+  }
+  .search-box input {
+    background: var(--bg-card); border: 1px solid var(--border);
+    color: var(--text-primary); padding: 12px 18px; border-radius: var(--radius-sm);
+    font-size: 15px; font-family: inherit; width: 240px; outline: none;
+  }
+  .search-box input:focus { border-color: var(--accent-blue); }
+  .search-box button {
+    background: var(--accent-blue); border: none; color: #fff;
+    padding: 12px 28px; border-radius: var(--radius-sm);
+    font-size: 15px; cursor: pointer; font-family: inherit; font-weight: 600;
+  }
+  .search-box button:hover { opacity: .9; }
+  .search-box button:disabled { opacity: .5; cursor: not-allowed; }
+
+  .result-card {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 24px; line-height: 1.8;
+  }
+  .result-card h3 {
+    font-size: 16px; margin-bottom: 16px; padding-bottom: 10px;
+    border-bottom: 1px solid var(--border);
+  }
+  .result-card h4 {
+    font-size: 14px; color: var(--accent-blue); margin: 16px 0 6px;
+  }
+  .result-card p { font-size: 14px; color: var(--text-secondary); line-height: 1.9; }
+  .result-card ul { padding-left: 20px; margin: 6px 0; }
+  .result-card li { font-size: 14px; color: var(--text-secondary); line-height: 1.9; }
+
+  .loading-box { text-align: center; padding: 40px; color: var(--text-muted); }
+  .loading-box .spinner {
+    display: inline-block; width: 32px; height: 32px;
+    border: 3px solid var(--border); border-top-color: var(--accent-blue);
+    border-radius: 50%; animation: spin .8s linear infinite; margin-bottom: 12px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .error-box {
+    background: rgba(255,61,87,.08); border: 1px solid rgba(255,61,87,.3);
+    border-radius: var(--radius-sm); padding: 16px; color: var(--accent-red);
+    font-size: 13px;
+  }
+
+  .info-bar {
+    font-size: 11px; color: var(--text-muted); text-align: center; margin-top: 20px;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <h1>AI 深度分析</h1>
+    <p>测试版 · SiliconFlow DeepSeek-V3 · 独立页面</p>
+  </div>
+
+  <div class="search-box">
+    <input type="text" id="stockInput" placeholder="输入股票代码，如 600519" maxlength="6"
+           onkeydown="if(event.key==='Enter')analyze()">
+    <button id="analyzeBtn" onclick="analyze()">深度分析</button>
+  </div>
+
+  <div id="result"></div>
+
+  <div class="info-bar">
+    此页面独立于主功能，测试满意后将合并到主页面「付费功能」
+  </div>
+</div>
+
+<script>
+async function analyze() {
+  const code = document.getElementById('stockInput').value.trim();
+  const result = document.getElementById('result');
+  const btn = document.getElementById('analyzeBtn');
+
+  if (!/^\d{6}$/.test(code)) { result.innerHTML = '<div class="error-box">请输入 6 位股票代码</div>'; return; }
+
+  btn.disabled = true; btn.textContent = '分析中...';
+  result.innerHTML = '<div class="loading-box"><div class="spinner"></div><div>AI 正在分析，约需 5-10 秒...</div></div>';
+
+  try {
+    const resp = await fetch(`/api/ai-analyze?stock=${code}`);
+    const json = await resp.json();
+    if (json.error) {
+      result.innerHTML = `<div class="error-box">${json.error}</div>`;
+    } else {
+      const report = json.report
+        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+        .replace(/### (.*)/g, '<h4>$1</h4>')
+        .replace(/- /g, '<br>• ')
+        .replace(/\n\n/g, '</p><p>');
+      result.innerHTML = `
+        <div class="result-card">
+          <h3>${json.name}（${json.code}）深度分析报告</h3>
+          <p>${report}</p>
+        </div>`;
+    }
+  } catch (e) {
+    result.innerHTML = `<div class="error-box">请求失败：${e.message}<br>请确认 app.js 已启动且配置了 API Key。</div>`;
+  }
+  btn.disabled = false; btn.textContent = '深度分析';
+}
+</script>
+</body>
+</html>
