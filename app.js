@@ -110,7 +110,7 @@ async function getAllNews(stockCode) {
 // ============================
 const AI_API_KEY = process.env.SF_API_KEY || 'sk-vjwhhlbgymkjijywcitvlmbfcyfikfjmivaygpqmstzxiiuv';
 const AI_API_URL = 'https://api.siliconflow.cn/v1/chat/completions';
-const AI_MODEL = 'deepseek-ai/DeepSeek-V3';
+const AI_MODEL = 'Qwen/Qwen2.5-7B-Instruct';
 
 function buildAIPrompt(code, quote, klines, newsSummary) {
   const klineText = (klines || []).map(k =>
