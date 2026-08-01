@@ -97,7 +97,6 @@ function detectCategory(title, content) {
 async function getAllNews(stockCode) {
   const results = [];
   try { const cls = await fetchClsTelegraph(); results.push(...cls); } catch (e) { console.error('CLS:', e.message); }
-  try { const em = await fetchEastMoneyGlobalNews(); results.push(...em); } catch (e) { console.error('EM:', e.message); }
   if (stockCode) {
     try { const st = await fetchEastMoneyStockNews(stockCode); results.push(...st); } catch (e) { console.error('Stock:', e.message); }
   }
