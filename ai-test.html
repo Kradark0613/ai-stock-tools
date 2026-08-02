@@ -57,6 +57,9 @@
     <span style="font-size:10px;color:var(--text-muted);" id="finStatus"></span>
   </div>
   <div id="fullFinance"></div>
+
+  <!-- Valuation Models (Paid) -->
+  <div id="priceRangeSection" style="margin-top:14px;"></div>
 </div>
 </div>
 
@@ -152,6 +155,7 @@ async function analyze() {
   btn.disabled = false; btn.textContent = '深度分析';
   // Also fetch finance data
   fetchFullFinance(code);
+  fetchPriceRange(code, quote.price);
 }
 
 async function fetchFullFinance(code) {
@@ -248,6 +252,74 @@ async function fetchFullFinance(code) {
       </div>`;
     status.textContent = '';
   } catch(e) { el.innerHTML = '<div style="padding:10px;color:var(--accent-red);">获取失败</div>'; status.textContent = ''; }
+}
+
+async function fetchPriceRange(code, price) {
+  const el = document.getElementById('priceRangeSection');
+  if (!el) return;
+  try {
+    const r = await fetch(`/api/finance?stock=${code}`);
+    const j = await r.json();
+    if (!j.reports || !j.reports.length) { el.innerHTML = ''; return; }
+    const f = j.reports[0];
+    if (!f.eps || f.eps <= 0) { el.innerHTML = ''; return; }
+    const eps = f.eps;
+    const growth = f.deductProfitYoY ? parseFloat(f.deductProfitYoY) : 0;
+    const roe = f.roe ? parseFloat(f.roe) : 0;
+    const pb = parseFloat(document.getElementById('klinePrice')?.textContent || price || 0) / (f.bps || 1);
+
+    // Model 1: PEG估值
+    const pegPeLow = Math.max(15, growth * 0.5);
+    const pegPeHigh = Math.min(Math.max(growth * 1.5, 25), 60);
+    const pegLow = (eps * pegPeLow).toFixed(2);
+    const pegHigh = (eps * pegPeHigh).toFixed(2);
+
+    // Model 2: PB-ROE估值
+    const pbRoePe = roe > 0 ? Math.min(roe * 1.5, 40) : 15;
+    const pbRoePrice = (eps * pbRoePe).toFixed(2);
+
+    // Model 3: 行业基准PE = 25
+    const industryPe = 25;
+    const industryPrice = (eps * industryPe).toFixed(2);
+
+    // 综合区间
+    const allLows = [parseFloat(pegLow), parseFloat(pbRoePrice), parseFloat(industryPrice)].sort((a,b)=>a-b);
+    const allHighs = [parseFloat(pegHigh), parseFloat(pbRoePrice), parseFloat(industryPrice)].sort((a,b)=>a-b);
+    const finalLow = allLows[0].toFixed(2);
+    const finalHigh = allHighs[2].toFixed(2);
+
+    const curPrice = parseFloat(price || document.getElementById('klinePrice')?.textContent || 0);
+    const position = curPrice <= parseFloat(finalLow) ? '低估' : curPrice >= parseFloat(finalHigh) ? '高估' : '合理';
+    const posColor = position === '低估' ? 'var(--accent-green)' : position === '高估' ? 'var(--accent-red)' : 'var(--accent-blue)';
+
+    el.innerHTML = `
+      <h4 style="font-size:13px;color:var(--accent-blue);margin-bottom:10px;">估值模型对比</h4>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;font-size:12px;margin-bottom:14px;">
+        <div style="background:var(--bg-secondary);padding:10px;border-radius:var(--radius-sm);">
+          <div style="color:var(--text-muted);">PEG模型</div>
+          <div style="font-weight:600;color:var(--accent-blue);">${pegLow} - ${pegHigh}</div>
+          <div style="color:var(--text-muted);font-size:10px;">PE ${pegPeLow.toFixed(0)}-${pegPeHigh.toFixed(0)} × EPS ${eps}</div>
+        </div>
+        <div style="background:var(--bg-secondary);padding:10px;border-radius:var(--radius-sm);">
+          <div style="color:var(--text-muted);">PB-ROE模型</div>
+          <div style="font-weight:600;color:var(--accent-purple?);">${pbRoePrice}</div>
+          <div style="color:var(--text-muted);font-size:10px;">PE=${pbRoePe.toFixed(0)} ROE=${roe}%</div>
+        </div>
+        <div style="background:var(--bg-secondary);padding:10px;border-radius:var(--radius-sm);">
+          <div style="color:var(--text-muted);">行业基准PE=25</div>
+          <div style="font-weight:600;">${industryPrice}</div>
+          <div style="color:var(--text-muted);font-size:10px;">EPS ${eps} × 25</div>
+        </div>
+      </div>
+      <div style="background:rgba(75,139,255,0.05);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px 16px;display:flex;align-items:center;gap:14px;">
+        <div style="text-align:center;"><div style="font-size:28px;font-weight:700;color:${posColor};">${finalLow} - ${finalHigh}</div><div style="font-size:10px;color:var(--text-muted);">综合估值区间</div></div>
+        <div style="flex:1;font-size:13px;line-height:1.8;">
+          <div>当前价 <strong>${curPrice.toFixed(2)}</strong> → <strong style="color:${posColor};">${position}</strong></div>
+          <div style="color:var(--text-muted);font-size:11px;">若低于${finalLow}为买入区间<br>若高于${finalHigh}为高估区间</div>
+        </div>
+      </div>
+    `;
+  } catch(e) { el.innerHTML = ''; }
 }
 </script>
 </body>
