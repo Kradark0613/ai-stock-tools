@@ -313,6 +313,8 @@ const server = http.createServer(async (req, res) => {
   let html;
   if (url.pathname === '/ai-test' || url.pathname === '/ai-test.html') {
     try { html = fs.readFileSync(path.join(__dirname, 'ai-test.html'), 'utf-8'); } catch(e) { html = null; }
+  } else if (url.pathname === '/pro-test' || url.pathname === '/pro-test.html') {
+    try { html = fs.readFileSync(path.join(__dirname, 'pro-test.html'), 'utf-8'); } catch(e) { html = null; }
   } else {
     html = getHtml();
   }
