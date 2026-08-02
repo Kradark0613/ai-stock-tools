@@ -263,31 +263,31 @@ async function fetchFullFinanceAndValuation(code, price, j) {
         const growth = f.deductProfitYoY ? parseFloat(f.deductProfitYoY) : 0;
         const roe = f.roe ? parseFloat(f.roe) : 0;
 
-    // Model 1: PEG估值
-    const pegPeLow = Math.max(15, growth * 0.5);
-    const pegPeHigh = Math.min(Math.max(growth * 1.5, 25), 60);
-    const pegLow = (eps * pegPeLow).toFixed(2);
-    const pegHigh = (eps * pegPeHigh).toFixed(2);
+        // Model 1: PEG估值
+        const pegPeLow = Math.max(15, growth * 0.5);
+        const pegPeHigh = Math.min(Math.max(growth * 1.5, 25), 60);
+        const pegLow = (eps * pegPeLow).toFixed(2);
+        const pegHigh = (eps * pegPeHigh).toFixed(2);
 
-    // Model 2: PB-ROE估值
-    const pbRoePe = roe > 0 ? Math.min(roe * 1.5, 40) : 15;
-    const pbRoePrice = (eps * pbRoePe).toFixed(2);
+        // Model 2: PB-ROE估值
+        const pbRoePe = roe > 0 ? Math.min(roe * 1.5, 40) : 15;
+        const pbRoePrice = (eps * pbRoePe).toFixed(2);
 
-    // Model 3: 行业基准PE = 25
-    const industryPe = 25;
-    const industryPrice = (eps * industryPe).toFixed(2);
+        // Model 3: 行业基准PE=25
+        const industryPe = 25;
+        const industryPrice = (eps * industryPe).toFixed(2);
 
-    // 综合区间
-    const allLows = [parseFloat(pegLow), parseFloat(pbRoePrice), parseFloat(industryPrice)].sort((a,b)=>a-b);
-    const allHighs = [parseFloat(pegHigh), parseFloat(pbRoePrice), parseFloat(industryPrice)].sort((a,b)=>a-b);
-    const finalLow = allLows[0].toFixed(2);
-    const finalHigh = allHighs[2].toFixed(2);
+        // 综合区间
+        const allLows = [parseFloat(pegLow), parseFloat(pbRoePrice), parseFloat(industryPrice)].sort((a,b)=>a-b);
+        const allHighs = [parseFloat(pegHigh), parseFloat(pbRoePrice), parseFloat(industryPrice)].sort((a,b)=>a-b);
+        const finalLow = allLows[0].toFixed(2);
+        const finalHigh = allHighs[2].toFixed(2);
 
-    const curPrice = parseFloat(price || document.getElementById('klinePrice')?.textContent || 0);
-    const position = curPrice <= parseFloat(finalLow) ? '低估' : curPrice >= parseFloat(finalHigh) ? '高估' : '合理';
-    const posColor = position === '低估' ? 'var(--accent-green)' : position === '高估' ? 'var(--accent-red)' : 'var(--accent-blue)';
+        const curPrice = parseFloat(price || 0);
+        const position = curPrice <= parseFloat(finalLow) ? '低估' : curPrice >= parseFloat(finalHigh) ? '高估' : '合理';
+        const posColor = position === '低估' ? 'var(--accent-green)' : position === '高估' ? 'var(--accent-red)' : 'var(--accent-blue)';
 
-    el.innerHTML = `
+        pel.innerHTML = `
       <h4 style="font-size:13px;color:var(--accent-blue);margin-bottom:10px;">估值模型对比</h4>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;font-size:12px;margin-bottom:14px;">
         <div style="background:var(--bg-secondary);padding:10px;border-radius:var(--radius-sm);">
