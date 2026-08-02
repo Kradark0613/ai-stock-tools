@@ -562,7 +562,7 @@ async function searchStock() {
       </div>
     </div>`;
   // Fetch finance data
-  fetchFinanceCard(q.code);
+  fetchFinanceCard(q.code, q.price);
 }
 
 // ==============================
@@ -681,7 +681,7 @@ async function loadStockNews(code) {
   } catch(e) { c.innerHTML = ''; }
 }
 
-async function fetchFinanceCard(code) {
+async function fetchFinanceCard(code, price) {
   const el = document.getElementById('financeContent');
   const loadEl = document.getElementById('financeLoading');
   if (!el || !loadEl) return;
@@ -690,20 +690,45 @@ async function fetchFinanceCard(code) {
     const j = await resp.json();
     if (!j.reports || !j.reports.length) { el.innerHTML = '暂无财报数据'; loadEl.textContent = ''; return; }
     const r = j.reports[0]; // Latest report
-    const check = (val, threshold, label) => {
+    const check = (val, threshold) => {
       if (val == null) return '';
       const v = parseFloat(val);
-      const ok = v >= threshold;
-      return `<span style="color:${ok?'var(--accent-green)':'var(--accent-red)'};">${ok?'通过':'未达标'}</span>`;
+      return `<span style="color:${v>=threshold?'var(--accent-green)':'var(--accent-red)'};">${v>=threshold?'通过':'未达标'}</span>`;
     };
+
+    // Price range calculation: EPS × PE区间
+    let priceRange = '';
+    if (r.eps && r.eps > 0 && r.deductProfitYoY && parseFloat(r.deductProfitYoY) > 0) {
+      const eps = r.eps;
+      const growth = parseFloat(r.deductProfitYoY);
+      const peLow = Math.max(15, growth * 0.5);
+      const peHigh = Math.min(growth * 1.5, 60);
+      const priceLow = (eps * peLow).toFixed(2);
+      const priceHigh = (eps * peHigh).toFixed(2);
+      const inRange = price >= parseFloat(priceLow) && price <= parseFloat(priceHigh);
+      priceRange = `
+        <div style="margin-top:10px;padding:10px 14px;background:rgba(75,139,255,0.05);border-radius:var(--radius-sm);border-left:3px solid var(--accent-blue);">
+          <div style="font-size:12px;color:var(--text-muted);margin-bottom:6px;">📐 合理价位区间（PE估值法）</div>
+          <div style="display:flex;gap:16px;flex-wrap:wrap;font-size:12px;">
+            <div><span style="color:var(--text-muted);">EPS</span> <span style="font-weight:600;">${eps}</span></div>
+            <div><span style="color:var(--text-muted);">PE下限</span> <span style="color:var(--accent-green);font-weight:600;">${peLow.toFixed(0)}</span></div>
+            <div><span style="color:var(--text-muted);">PE上限</span> <span style="color:var(--accent-orange);font-weight:600;">${peHigh.toFixed(0)}</span></div>
+            <div><span style="color:var(--text-muted);">区间</span> <span style="font-weight:600;color:var(--accent-blue);">${priceLow} - ${priceHigh}</span></div>
+            <div><span style="color:var(--text-muted);">当前</span> <span style="font-weight:600;color:${inRange?'var(--accent-green)':'var(--accent-red)'};">${price.toFixed(2)} ${inRange?'✅ 在区间内':'⚠ 偏离区间'}</span></div>
+          </div>
+          <div style="font-size:10px;color:var(--text-muted);margin-top:4px;">PE下限=Max(15,增速×0.5) | PE上限=Min(增速×1.5, 60) | 基于PEG估值</div>
+        </div>`;
+    }
+
     el.innerHTML = `
       <div style="display:flex;gap:24px;flex-wrap:wrap;">
         <div><div style="color:var(--text-muted);">报告期</div><div style="color:var(--text-primary);font-weight:600;">${r.reportDate} ${r.reportType}</div></div>
-        <div><div style="color:var(--text-muted);">营收增速</div><div style="color:var(--text-primary);font-weight:600;">${r.revenueYoY!=null?r.revenueYoY+'%':'--'} ${r.revenueYoY!=null?check(r.revenueYoY,10,'营收'):''}</div></div>
-        <div><div style="color:var(--text-muted);">扣非净利润增速</div><div style="color:var(--text-primary);font-weight:600;">${r.deductProfitYoY!=null?r.deductProfitYoY+'%':'--'} ${r.deductProfitYoY!=null?check(r.deductProfitYoY,30,'扣非'):''}</div></div>
-        <div><div style="color:var(--text-muted);">ROE</div><div style="color:var(--text-primary);font-weight:600;">${r.roe!=null?r.roe+'%':'--'} ${r.roe!=null?check(r.roe,10,'ROE'):''}</div></div>
+        <div><div style="color:var(--text-muted);">营收增速</div><div style="color:var(--text-primary);font-weight:600;">${r.revenueYoY!=null?r.revenueYoY+'%':'--'} ${r.revenueYoY!=null?check(r.revenueYoY,10):''}</div></div>
+        <div><div style="color:var(--text-muted);">扣非增速</div><div style="color:var(--text-primary);font-weight:600;">${r.deductProfitYoY!=null?r.deductProfitYoY+'%':'--'} ${r.deductProfitYoY!=null?check(r.deductProfitYoY,30):''}</div></div>
+        <div><div style="color:var(--text-muted);">ROE</div><div style="color:var(--text-primary);font-weight:600;">${r.roe!=null?r.roe+'%':'--'} ${r.roe!=null?check(r.roe,10):''}</div></div>
         <div><div style="color:var(--text-muted);">毛利率</div><div style="color:var(--text-primary);font-weight:600;">${r.grossMargin!=null?r.grossMargin+'%':'--'}</div></div>
-      </div>`;
+      </div>
+      ${priceRange}`;
     loadEl.textContent = '';
   } catch(e) { el.innerHTML = '获取失败'; loadEl.textContent = ''; }
 }
