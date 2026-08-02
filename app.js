@@ -177,6 +177,44 @@ function callAI(prompt) {
 }
 
 // ============================
+// Finance Data Proxy
+// ============================
+async function fetchFinanceData(code) {
+  const prefix = ['0','3'].includes(code[0]) ? 'SZ' : 'SH';
+  return new Promise((resolve, reject) => {
+    const url = `https://datacenter-web.eastmoney.com/api/data/v1/get?reportName=RPT_F10_FINANCE_MAINFINADATA&columns=ALL&filter=(SECURITY_CODE="${code}")&pageSize=5&source=WEB&client=WEB`;
+    https.get(url, { headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://data.eastmoney.com/' } }, res => {
+      let body = '';
+      res.on('data', c => body += c);
+      res.on('end', () => {
+        try {
+          const j = JSON.parse(body);
+          const rows = (j.result?.data || []).map(r => ({
+            reportDate: r.REPORT_DATE?.substring(0,10) || '',
+            reportType: r.REPORT_TYPE || '',
+            revenue: (r.TOTALOPERATEREVE || 0) / 1e8,
+            revenueYoY: r.TOTALOPERATEREVETZ != null ? parseFloat(r.TOTALOPERATEREVETZ).toFixed(2) : null,
+            parentProfit: (r.PARENTNETPROFIT || 0) / 1e8,
+            profitYoY: r.PARENTNETPROFITTZ != null ? parseFloat(r.PARENTNETPROFITTZ).toFixed(2) : null,
+            deductProfit: (r.KCFJCXSYJLR || 0) / 1e8,
+            deductProfitYoY: r.KCFJCXSYJLRTZ != null ? parseFloat(r.KCFJCXSYJLRTZ).toFixed(2) : null,
+            roe: r.ROEJQ != null ? parseFloat(r.ROEJQ).toFixed(2) : null,
+            grossMargin: r.XSMLL != null ? parseFloat(r.XSMLL).toFixed(2) : null,
+            netMargin: r.XSJLL != null ? parseFloat(r.XSJLL).toFixed(2) : null,
+            debtRatio: r.ZCFZL != null ? parseFloat(r.ZCFZL).toFixed(2) : null,
+            eps: r.EPSJB != null ? parseFloat(r.EPSJB).toFixed(2) : null,
+            bps: r.BPS != null ? parseFloat(r.BPS).toFixed(2) : null,
+            totalAssets: (r.TOTAL_ASSETS_PK || 0) / 1e8,
+            operateCashflow: (r.NETCASH_OPERATE_PK || 0) / 1e8,
+          }));
+          resolve({ code, name: rows[0] ? j.result.data[0].SECURITY_NAME_ABBR : '', reports: rows });
+        } catch(e) { reject(e); }
+      });
+    }).on('error', reject);
+  });
+}
+
+// ============================
 // Load HTML
 // ============================
 const HTML_PATH = path.join(__dirname, 'ai-stock-tools.html');
@@ -211,6 +249,19 @@ const server = http.createServer(async (req, res) => {
     } catch (e) {
       res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
       res.end(JSON.stringify({ success: false, error: e.message }));
+    }
+    return;
+  }
+
+  if (url.pathname === '/api/finance') {
+    const stockCode = url.searchParams.get('stock') || '';
+    try {
+      const fdata = await fetchFinanceData(stockCode);
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify(fdata));
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ error: e.message }));
     }
     return;
   }

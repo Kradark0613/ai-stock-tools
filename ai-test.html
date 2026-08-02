@@ -48,7 +48,16 @@
     <button id="analyzeBtn" onclick="analyze()">深度分析</button>
   </div>
   <div id="result"></div>
-  <div class="info-bar">测试满意后将合并到主页面</div>
+  <div class="info-bar">测试满意后将合并到主页面 | 财报部分为付费版预览</div>
+
+<!-- Full Financial Analysis (Paid Preview) -->
+<div style="margin-top:24px;background:var(--bg-card);border:1px solid #2a4a2a;border-radius:var(--radius);padding:20px 24px;">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+    <h3 style="font-size:16px;margin:0;">完整财报分析 <span style="font-size:10px;color:var(--accent-orange);border:1px solid var(--accent-orange);padding:2px 8px;border-radius:10px;">付费版</span></h3>
+    <span style="font-size:10px;color:var(--text-muted);" id="finStatus"></span>
+  </div>
+  <div id="fullFinance"></div>
+</div>
 </div>
 
 <script>
@@ -141,6 +150,104 @@ async function analyze() {
     result.innerHTML = `<div class="error-box">${e.message}</div>`;
   }
   btn.disabled = false; btn.textContent = '深度分析';
+  // Also fetch finance data
+  fetchFullFinance(code);
+}
+
+async function fetchFullFinance(code) {
+  const status = document.getElementById('finStatus');
+  const el = document.getElementById('fullFinance');
+  status.textContent = '加载中...';
+  try {
+    const r = await fetch(`/api/finance?stock=${code}`);
+    const j = await r.json();
+    if (!j.reports || !j.reports.length) { el.innerHTML = '<div style="padding:10px;color:var(--text-muted);">暂无财报数据</div>'; status.textContent = ''; return; }
+    const reports = j.reports;
+    const latest = reports[0];
+
+    // Multi-year comparison table
+    const tableRows = reports.map(r => {
+      const check30 = (v) => v != null && parseFloat(v) >= 30;
+      return `<tr style="border-bottom:1px solid rgba(255,255,255,0.03);">
+        <td style="padding:6px 10px;">${r.reportDate}</td>
+        <td style="padding:6px 10px;">${r.reportType}</td>
+        <td style="padding:6px 10px;text-align:right;">${r.revenue!=null?r.revenue.toFixed(1)+'亿':'--'}</td>
+        <td style="padding:6px 10px;text-align:right;color:${check30(r.revenueYoY)?'var(--accent-green)':'var(--text-muted)'};">${r.revenueYoY!=null?r.revenueYoY+'%':'--'}</td>
+        <td style="padding:6px 10px;text-align:right;">${r.deductProfit!=null?r.deductProfit.toFixed(1)+'亿':'--'}</td>
+        <td style="padding:6px 10px;text-align:right;color:${check30(r.deductProfitYoY)?'var(--accent-green)':'var(--text-secondary)'};">${r.deductProfitYoY!=null?r.deductProfitYoY+'%':'--'}</td>
+        <td style="padding:6px 10px;text-align:right;color:${r.roe!=null&&parseFloat(r.roe)>=15?'var(--accent-green)':'var(--text-secondary)'};">${r.roe!=null?r.roe+'%':'--'}</td>
+      </tr>`;
+    }).join('');
+
+    // DuPont analysis
+    const dupontROE = latest.roe || 0;
+    const dupontMargin = latest.netMargin || 0;
+    const dupontTurnover = latest.totalAssets > 0 ? (latest.revenue / latest.totalAssets * 100).toFixed(2) : 0;
+    const dupontLeverage = latest.totalAssets > 0 && latest.totalAssets > latest.debtRatio ? (latest.totalAssets / (latest.totalAssets * (1 - latest.debtRatio/100))).toFixed(2) : '--';
+
+    // Financial health score
+    let healthScore = 50;
+    if (latest.revenueYoY && parseFloat(latest.revenueYoY) > 20) healthScore += 10;
+    if (latest.deductProfitYoY && parseFloat(latest.deductProfitYoY) > 30) healthScore += 15;
+    if (latest.roe && parseFloat(latest.roe) > 15) healthScore += 10;
+    if (latest.debtRatio && parseFloat(latest.debtRatio) < 50) healthScore += 10;
+    if (latest.grossMargin && parseFloat(latest.grossMargin) > 30) healthScore += 5;
+    if (latest.netMargin && parseFloat(latest.netMargin) > 10) healthScore += 10;
+    healthScore = Math.min(100, healthScore);
+
+    el.innerHTML = `
+      <div style="display:flex;flex-direction:column;gap:16px;">
+
+        <!-- Multi-year comparison -->
+        <div>
+          <h4 style="font-size:13px;color:var(--accent-blue);margin-bottom:8px;">历年财报对比</h4>
+          <div style="overflow-x:auto;">
+            <table style="width:100%;border-collapse:collapse;font-size:12px;">
+              <thead><tr style="color:var(--text-muted);font-size:11px;">
+                <th style="text-align:left;padding:6px 10px;">报告期</th><th style="text-align:left;padding:6px 10px;">类型</th>
+                <th style="text-align:right;padding:6px 10px;">营收</th><th style="text-align:right;padding:6px 10px;">营收增速</th>
+                <th style="text-align:right;padding:6px 10px;">扣非净利</th><th style="text-align:right;padding:6px 10px;">扣非增速</th>
+                <th style="text-align:right;padding:6px 10px;">ROE</th>
+              </tr></thead>
+              <tbody>${tableRows}</tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- DuPont -->
+        <div>
+          <h4 style="font-size:13px;color:var(--accent-blue);margin-bottom:8px;">杜邦分析</h4>
+          <div style="font-size:12px;color:var(--text-secondary);line-height:2;">
+            ROE = 净利率 × 资产周转率 × 权益乘数<br>
+            <span style="color:var(--accent-green);">${dupontROE}%</span> = <span style="color:var(--accent-blue);">${dupontMargin}%</span> × <span style="color:var(--accent-blue);">${dupontTurnover}%</span> × <span style="color:var(--accent-blue);">${dupontLeverage}</span>
+          </div>
+        </div>
+
+        <!-- Financial Health Score -->
+        <div>
+          <h4 style="font-size:13px;color:var(--accent-blue);margin-bottom:8px;">财务健康评分</h4>
+          <div style="display:flex;align-items:center;gap:14px;">
+            <div style="text-align:center;"><div style="font-size:36px;font-weight:700;color:${healthScore>=70?'var(--accent-green)':healthScore>=40?'var(--accent-orange)':'var(--accent-red)'};">${healthScore}</div><div style="font-size:10px;color:var(--text-muted);">/100</div></div>
+            <div style="font-size:12px;color:var(--text-secondary);line-height:1.8;">
+              <div>营收增速 ${parseFloat(latest.revenueYoY||0)>20?'+'+(parseFloat(latest.revenueYoY)-20).toFixed(1):'差'+(20-parseFloat(latest.revenueYoY||0)).toFixed(1)}% 达标</div>
+              <div>扣非增速 ${parseFloat(latest.deductProfitYoY||0)>30?'+10':'未达标'}</div>
+              <div>ROE ${parseFloat(latest.roe||0)>15?'+10':'未达标'}</div>
+              <div>负债率 ${parseFloat(latest.debtRatio||0)<50?'+10 ('+parseFloat(latest.debtRatio).toFixed(1)+'%)':parseFloat(latest.debtRatio)+'%(偏高)'}</div>
+              <div>毛利率 ${parseFloat(latest.grossMargin||0)>30?'+5 ('+parseFloat(latest.grossMargin).toFixed(1)+'%)':''}</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Key Metrics Summary -->
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;font-size:12px;">
+          <div style="background:var(--bg-secondary);padding:10px;border-radius:var(--radius-sm);"><div style="color:var(--text-muted);">每股收益</div><div style="font-weight:600;">${latest.eps||'--'}</div></div>
+          <div style="background:var(--bg-secondary);padding:10px;border-radius:var(--radius-sm);"><div style="color:var(--text-muted);">每股净资产</div><div style="font-weight:600;">${latest.bps||'--'}</div></div>
+          <div style="background:var(--bg-secondary);padding:10px;border-radius:var(--radius-sm);"><div style="color:var(--text-muted);">资产负债率</div><div style="font-weight:600;">${latest.debtRatio||'--'}%</div></div>
+        </div>
+
+      </div>`;
+    status.textContent = '';
+  } catch(e) { el.innerHTML = '<div style="padding:10px;color:var(--accent-red);">获取失败</div>'; status.textContent = ''; }
 }
 </script>
 </body>

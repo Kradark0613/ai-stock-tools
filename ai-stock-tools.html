@@ -261,6 +261,20 @@
           <div style="padding:10px 16px;text-align:right;"><button class="btn-add" style="width:auto;padding:6px 20px;" onclick="runReview()">&#128202; 生成复盘</button></div>
         </div>
       </div>
+      <!-- Stop Loss / Profit Quick Calculator -->
+      <div id="stopLossCalc" style="display:none;">
+        <div class="trade-table-wrap">
+          <h3>&#128204; 止盈止损速算</h3>
+          <div style="overflow-x:auto;padding:12px 16px;">
+            <table style="width:100%;border-collapse:collapse;font-size:12px;">
+              <thead><tr style="color:var(--text-muted);"><th style="text-align:left;padding:6px 8px;">股票</th><th style="text-align:right;padding:6px 8px;">成本</th><th style="text-align:right;padding:6px 8px;color:var(--accent-red);">止损 (-15%)</th><th style="text-align:right;padding:6px 8px;color:var(--accent-green);">减仓 (+20%)</th><th style="text-align:right;padding:6px 8px;color:var(--accent-blue);">清仓 (+35%)</th><th style="text-align:right;padding:6px 8px;color:var(--accent-orange);">动态止盈 (最高×0.9)</th></tr></thead>
+              <tbody id="stopLossBody"></tbody>
+            </table>
+            <div style="font-size:10px;color:var(--text-muted);margin-top:8px;">买入后记录最高价，实时对比动态止盈线。触发任意线位严格执行。</div>
+          </div>
+        </div>
+        </div>
+      </div>
       <div id="reviewStats" style="display:none;"></div>
     </div>
   </div>
@@ -536,7 +550,19 @@ async function searchStock() {
         <div style="text-align:center;"><div style="font-size:28px;font-weight:700;color:${a.ratingColor};">${a.score}</div><div style="font-size:10px;color:var(--text-muted);">综合评分</div></div>
         <div><div style="font-size:14px;font-weight:600;color:${a.ratingColor};">${a.rating}</div><div style="font-size:12px;color:var(--text-secondary);margin-top:2px;">${a.ratingSummary}</div></div>
       </div>
+      <div id="financeCard" style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:14px 18px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+          <span style="font-size:14px;font-weight:600;">核心财报 <span style="font-size:10px;color:var(--accent-green);">免费版</span></span>
+          <span style="font-size:10px;color:var(--text-muted);" id="financeLoading">加载中...</span>
+        </div>
+        <div id="financeContent" style="font-size:12px;color:var(--text-muted);">正在获取财报数据...</div>
+        <div style="margin-top:8px;font-size:10px;color:var(--accent-orange);border-top:1px solid var(--border);padding-top:8px;">
+          解锁历年对比、杜邦分析、行业排名 → <span style="color:var(--accent-blue);cursor:pointer;">升级付费版</span>
+        </div>
+      </div>
     </div>`;
+  // Fetch finance data
+  fetchFinanceCard(q.code);
 }
 
 // ==============================
@@ -655,6 +681,33 @@ async function loadStockNews(code) {
   } catch(e) { c.innerHTML = ''; }
 }
 
+async function fetchFinanceCard(code) {
+  const el = document.getElementById('financeContent');
+  const loadEl = document.getElementById('financeLoading');
+  if (!el || !loadEl) return;
+  try {
+    const resp = await fetch(`/api/finance?stock=${code}`);
+    const j = await resp.json();
+    if (!j.reports || !j.reports.length) { el.innerHTML = '暂无财报数据'; loadEl.textContent = ''; return; }
+    const r = j.reports[0]; // Latest report
+    const check = (val, threshold, label) => {
+      if (val == null) return '';
+      const v = parseFloat(val);
+      const ok = v >= threshold;
+      return `<span style="color:${ok?'var(--accent-green)':'var(--accent-red)'};">${ok?'通过':'未达标'}</span>`;
+    };
+    el.innerHTML = `
+      <div style="display:flex;gap:24px;flex-wrap:wrap;">
+        <div><div style="color:var(--text-muted);">报告期</div><div style="color:var(--text-primary);font-weight:600;">${r.reportDate} ${r.reportType}</div></div>
+        <div><div style="color:var(--text-muted);">营收增速</div><div style="color:var(--text-primary);font-weight:600;">${r.revenueYoY!=null?r.revenueYoY+'%':'--'} ${r.revenueYoY!=null?check(r.revenueYoY,10,'营收'):''}</div></div>
+        <div><div style="color:var(--text-muted);">扣非净利润增速</div><div style="color:var(--text-primary);font-weight:600;">${r.deductProfitYoY!=null?r.deductProfitYoY+'%':'--'} ${r.deductProfitYoY!=null?check(r.deductProfitYoY,30,'扣非'):''}</div></div>
+        <div><div style="color:var(--text-muted);">ROE</div><div style="color:var(--text-primary);font-weight:600;">${r.roe!=null?r.roe+'%':'--'} ${r.roe!=null?check(r.roe,10,'ROE'):''}</div></div>
+        <div><div style="color:var(--text-muted);">毛利率</div><div style="color:var(--text-primary);font-weight:600;">${r.grossMargin!=null?r.grossMargin+'%':'--'}</div></div>
+      </div>`;
+    loadEl.textContent = '';
+  } catch(e) { el.innerHTML = '获取失败'; loadEl.textContent = ''; }
+}
+
 // ==============================
 // NEWS
 // ==============================
@@ -711,7 +764,7 @@ function addTrade() {
 
 function deleteTrade(index) {
   tradeData.splice(index,1); saveJSON(LS_TRADES, tradeData);
-  if(!tradeData.length){ document.getElementById('pendingTrades').style.display='none'; document.getElementById('reviewStats').style.display='none'; Object.values(_reviewCharts).forEach(c=>c.destroy()); _reviewCharts={}; }
+  if(!tradeData.length){ document.getElementById('pendingTrades').style.display='none'; document.getElementById('stopLossCalc').style.display='none'; document.getElementById('reviewStats').style.display='none'; Object.values(_reviewCharts).forEach(c=>c.destroy()); _reviewCharts={}; }
   else renderPendingTrades();
 }
 
@@ -719,7 +772,9 @@ function resetTrades() {
   if(!tradeData.length)return;
   if(!confirm(`确定清空全部 ${tradeData.length} 条记录？`))return;
   tradeData=[]; saveJSON(LS_TRADES, tradeData);
-  document.getElementById('pendingTrades').style.display='none'; document.getElementById('reviewStats').style.display='none';
+  document.getElementById('pendingTrades').style.display='none';
+  document.getElementById('stopLossCalc').style.display='none';
+  document.getElementById('reviewStats').style.display='none';
   Object.values(_reviewCharts).forEach(c=>c.destroy()); _reviewCharts={};
 }
 
@@ -727,8 +782,67 @@ function runReview() { if(!tradeData.length){ alert('请先录入交易'); retur
 
 function renderPendingTrades() {
   const c=document.getElementById('pendingTrades'),tb=document.getElementById('pendingTradesBody');
-  if(!tradeData.length){c.style.display='none';return;} c.style.display='';
+  if(!tradeData.length){c.style.display='none';document.getElementById('stopLossCalc').style.display='none';return;}
+  c.style.display='';
   tb.innerHTML=tradeData.map((t,i)=>`<tr><td>${t.date}</td><td>${t.name}</td><td style="color:${t.action==='买入'?'var(--accent-green)':'var(--accent-red)'}">${t.action}</td><td>${t.price.toFixed(2)}</td><td>${t.qty.toLocaleString()}</td><td>${t.amount.toLocaleString('zh-CN',{minimumFractionDigits:2})}</td><td><button class="btn-del" onclick="deleteTrade(${i})">&#10005;</button></td></tr>`).join('');
+
+  // Stop loss calculator
+  const buys = tradeData.filter(t => t.action === '买入');
+  if (!buys.length) { document.getElementById('stopLossCalc').style.display = 'none'; return; }
+  document.getElementById('stopLossCalc').style.display = '';
+
+  // Group by stock name
+  const groups = {}; for (const t of buys) { const k = t.name; if (!groups[k]) groups[k] = []; groups[k].push(t); }
+  const rows = [];
+  for (const [name, trades] of Object.entries(groups)) {
+    const totalQty = trades.reduce((s, t) => s + t.qty, 0);
+    const avgCost = trades.reduce((s, t) => s + t.price * t.qty, 0) / totalQty;
+    rows.push({ name, qty: totalQty, cost: avgCost });
+  }
+  document.getElementById('stopLossBody').innerHTML = rows.map(r => {
+    const stopLoss = (r.cost * 0.85).toFixed(2);
+    const reduce = (r.cost * 1.20).toFixed(2);
+    const exit = (r.cost * 1.35).toFixed(2);
+    const dynStop = (r.cost * 0.90).toFixed(2);
+    return `<tr style="border-bottom:1px solid rgba(255,255,255,0.03);">
+      <td style="padding:8px;"><strong>${r.name}</strong> <span style="color:var(--text-muted);">${r.qty}股</span></td>
+      <td style="padding:8px;text-align:right;">${r.cost.toFixed(2)}</td>
+      <td style="padding:8px;text-align:right;color:var(--accent-red);font-weight:600;">${stopLoss}</td>
+      <td style="padding:8px;text-align:right;color:var(--accent-green);font-weight:600;">${reduce}</td>
+      <td style="padding:8px;text-align:right;color:var(--accent-blue);font-weight:600;">${exit}</td>
+      <td style="padding:8px;text-align:right;color:var(--accent-orange);font-weight:600;">最高价×0.9</td>
+    </tr>`;
+  }).join('');
+}
+
+function disciplineCheck(trades) {
+  const violations = [];
+  const dateCounts = {}; for (const t of trades) dateCounts[t.date] = (dateCounts[t.date] || 0) + 1;
+
+  // 1. 频繁交易：单日 >2 笔
+  const freqDays = Object.entries(dateCounts).filter(([d,c]) => c > 2).sort();
+  if (freqDays.length) violations.push({ rule: '频繁交易', detail: `${freqDays.map(([d,c]) => `${d}(${c}笔)`).join('、')}，建议单日不超过2笔` });
+
+  // 2. 不止损：亏损 >8% 且持仓 >3 天
+  const groups = {}; for (const t of trades) { const k = t.name || '未知'; if (!groups[k]) groups[k] = []; groups[k].push(t); }
+  for (const [key, group] of Object.entries(groups)) {
+    const buys = group.filter(t => t.action === '买入').sort((a, b) => a.date.localeCompare(b.date));
+    const sells = group.filter(t => t.action === '卖出').sort((a, b) => a.date.localeCompare(b.date));
+    let bi = 0;
+    for (const sell of sells) {
+      let rem = sell.qty;
+      while (rem > 0 && bi < buys.length) {
+        const buy = buys[bi]; const mq = Math.min(rem, buy.qty);
+        const pnlPct = ((sell.price - buy.price) / buy.price) * 100;
+        const days = (new Date(sell.date) - new Date(buy.date)) / 86400000;
+        if (pnlPct < -8 && days > 0) violations.push({ rule: '不止损', detail: `${key} ${buy.date}买入→${sell.date}卖出，亏损${Math.abs(pnlPct).toFixed(1)}%，超8%红线` });
+        rem -= mq; buy.qty -= mq; if (buy.qty <= 0) bi++;
+      }
+    }
+  }
+
+  // 3. 追高：今日无数据可核实，跳过
+  return { violations };
 }
 
 function renderReview(trades) {
@@ -787,8 +901,29 @@ function renderReview(trades) {
         ${Object.entries(monthly).sort((a,b)=>b[0].localeCompare(a[0])).slice(0,6).map(([m,d])=>`<div style="background:var(--bg-secondary);padding:8px 12px;border-radius:var(--radius-sm);"><div style="color:var(--accent-blue);font-weight:600;">${m}</div><div>${d.trades}笔 (买${d.buy} 卖${d.sell})</div></div>`).join('')}
       </div>
     </div>
+    <!-- Profit Ratio Card -->
+    <div class="stat-card" style="border-left:3px solid ${parseFloat(profitRatio)>=2.5?'var(--accent-green)':'var(--accent-red)'};"><div class="stat-label">盈亏比 <span style="font-weight:600;">${profitRatio}</span></div><div class="stat-value" style="font-size:20px;color:${parseFloat(profitRatio)>=2.5?'var(--accent-green)':'var(--accent-red)'};">${parseFloat(profitRatio)>=2.5?'达标':'未达标'}</div><div class="stat-sub">目标 2.5:1 | 盈均${avgWin.toFixed(0)} vs 亏均${avgLoss.toFixed(0)}</div></div>
+
+    <!-- Monthly Discipline Check -->
+    <div class="stat-card" style="border-left:2px solid var(--accent-orange);">
+      <h3 style="font-size:13px;font-weight:500;color:var(--text-secondary);margin-bottom:10px;">月度纪律检查 ${(()=>{
+        const dc = disciplineCheck(trades);
+        return dc.violations.length===0 ? '<span style="color:var(--accent-green);font-size:12px;">通过</span>' : '<span style="color:var(--accent-red);font-size:12px;">'+dc.violations.length+'项违规</span>';
+      })()}</h3>
+      ${(()=>{
+        const dc = disciplineCheck(trades);
+        if (!dc.violations.length) return '<div style="font-size:12px;color:var(--accent-green);">本月未检测到违规操作，纪律执行良好。</div>';
+        return dc.violations.map(v=>`<div style="padding:6px 0;font-size:12px;border-bottom:1px solid rgba(255,255,255,0.03);"><span style="color:var(--accent-red);">&#10007;</span> <strong>${v.rule}</strong> — ${v.detail}</div>`).join('');
+      })()}
+    </div>
+
     <div class="suggestions-card"><span class="ai-badge" style="background:rgba(0,200,83,.2);color:var(--accent-green);font-size:11px;padding:2px 8px;border-radius:4px;display:inline-block;margin-bottom:8px;">AI 优化建议</span><h3 style="font-size:14px;font-weight:600;margin-bottom:8px;">基于交易数据的分析</h3><div id="aiSuggestionList"></div></div>
-    <div class="trade-table-wrap"><h3>交易记录（${trades.length} 笔）</h3><div style="overflow-x:auto;"><table class="trade-table"><thead><tr><th>日期</th><th>股票</th><th>操作</th><th>价格</th><th>数量</th><th>金额</th></tr></thead><tbody>${trades.sort((a,b)=>b.date.localeCompare(a.date)).map(t=>`<tr><td>${t.date}</td><td>${t.name}</td><td style="color:${t.action==='买入'?'var(--accent-green)':'var(--accent-red)'}">${t.action}</td><td>${t.price.toFixed(2)}</td><td>${t.qty.toLocaleString()}</td><td>${t.amount.toLocaleString('zh-CN',{minimumFractionDigits:2})}</td></tr>`).join('')}</tbody></table></div></div>
+    <div class="trade-table-wrap"><h3>交易记录（${trades.length} 笔）</h3><div style="overflow-x:auto;"><table class="trade-table"><thead><tr><th>日期</th><th>股票</th><th>操作</th><th>价格</th><th>数量</th><th>金额</th><th>止盈止损</th></tr></thead><tbody>${trades.sort((a,b)=>b.date.localeCompare(a.date)).map(t=>{
+      const stopLoss = t.action==='买入' ? (t.price*0.85).toFixed(2) : '';
+      const reducePrice = t.action==='买入' ? (t.price*1.20).toFixed(2) : '';
+      const exitPrice = t.action==='买入' ? (t.price*1.35).toFixed(2) : '';
+      return `<tr><td>${t.date}</td><td>${t.name}</td><td style="color:${t.action==='买入'?'var(--accent-green)':'var(--accent-red)'}">${t.action}</td><td>${t.price.toFixed(2)}</td><td>${t.qty.toLocaleString()}</td><td>${t.amount.toLocaleString('zh-CN',{minimumFractionDigits:2})}</td><td style="font-size:11px;">${t.action==='买入'?`<span style="color:var(--accent-red);">止损${stopLoss}</span> | <span style="color:var(--accent-green);">减仓${reducePrice}</span> | <span style="color:var(--accent-blue);">清仓${exitPrice}</span>`:'—'}</td></tr>`;
+    }).join('')}</tbody></table></div></div>
   `;
 
   const suggestions=[];
