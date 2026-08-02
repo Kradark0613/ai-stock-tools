@@ -146,14 +146,17 @@ async function analyze() {
 
     result.innerHTML = `
       <div class="result-card">
-        <h3>${json.name}（${json.code}）深度分析报告</h3>
+        <h3>${json.name}（${json.code}）深度分析报告
+          ${json.validated ? `<span style="font-size:12px;padding:2px 8px;border-radius:4px;margin-left:8px;background:${json.validationNote.includes('通过')||json.validationNote.includes('一致')?'rgba(0,200,83,.15)':'rgba(255,61,87,.15)'};color:${json.validationNote.includes('通过')||json.validationNote.includes('一致')?'var(--accent-green)':'var(--accent-red)'};">${json.validationNote.includes('通过')||json.validationNote.includes('一致')?'校验通过':'数据有误'}</span>`:''}
+        </h3>
         ${json.report
           .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
           .replace(/###\s*(.*)/g, '<h4>$1</h4>')
           .replace(/##\s*(.*)/g, '<h4>$1</h4>')
           .replace(/（([一二三四五六七八九十]+)）、/g, '<br><strong>（$1）</strong>')
           .split('\n\n').filter(p => p.trim()).map(p => `<p>${p.replace(/\n/g, '<br>')}</p>`).join('')}
-      </div>`;
+      </div>
+      ${json.validated && json.validationNote && !json.validationNote.includes('通过') && !json.validationNote.includes('一致') ? `<div style="margin-top:12px;background:rgba(255,61,87,.08);border:1px solid rgba(255,61,87,.2);border-radius:var(--radius-sm);padding:12px 16px;font-size:12px;color:var(--accent-red);"><strong>数据校验发现问题：</strong><br>${json.validationNote.replace(/\\n/g,'<br>')}</div>`:''}`;
   } catch (e) {
     result.innerHTML = `<div class="error-box">${e.message}</div>`;
   }

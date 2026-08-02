@@ -109,7 +109,8 @@ async function getAllNews(stockCode) {
 // ============================
 const AI_API_KEY = process.env.SF_API_KEY || 'sk-vjwhhlbgymkjijywcitvlmbfcyfikfjmivaygpqmstzxiiuv';
 const AI_API_URL = 'https://api.siliconflow.cn/v1/chat/completions';
-const AI_MODEL = 'Qwen/Qwen2.5-7B-Instruct';
+const AI_MODEL = 'Qwen/Qwen2.5-14B-Instruct';
+const AI_VALIDATE_MODEL = 'Qwen/Qwen2.5-7B-Instruct';
 
 function buildAIPrompt(code, quote, klines, newsSummary, finance) {
   const klineText = (klines || []).slice(-60).map(k =>
@@ -167,12 +168,13 @@ ${newsSummary || '暂无'}
 结合以上五维分析，给出未来1-4周的走势预判（看多/震荡/看空）。给出具体操作建议（买入/持有/减仓/观望），并说明理由。`;
 }
 
-function callAI(prompt) {
+function callAI(prompt, model) {
+  const m = model || AI_MODEL;
   return new Promise((resolve, reject) => {
     const data = JSON.stringify({
-      model: AI_MODEL,
+      model: m,
       messages: [{ role: 'user', content: prompt }],
-      max_tokens: 2500, temperature: 0.5,
+      max_tokens: m === AI_VALIDATE_MODEL ? 500 : 2500, temperature: 0.3,
     });
     const req = https.request(AI_API_URL, {
       method: 'POST',
@@ -291,9 +293,35 @@ const server = http.createServer(async (req, res) => {
         const { code, quote, klines, newsSummary, finance } = JSON.parse(body);
         if (!quote) throw new Error('缺少行情数据');
         const prompt = buildAIPrompt(code, quote, klines, newsSummary, finance);
+
+        // Model A: generate report (14B)
         const report = await callAI(prompt);
+
+        // Model B: validate key numbers (7B)
+        let validated = false, validationNote = '';
+        if (finance && finance.reports && finance.reports[0]) {
+          const f = finance.reports[0];
+          const vPrompt = `你是一个数据校验员。以下是AI分析报告中的财务数据，请逐项对比真实数据，找出所有编造或错误的数字。
+
+真实数据：
+营收${f.revenue?.toFixed(1)}亿(同比${f.revenueYoY}%)
+扣非净利润${f.deductProfit?.toFixed(1)}亿(同比${f.deductProfitYoY}%)
+ROE ${f.roe}% 毛利率${f.grossMargin}% 净利率${f.netMargin}%
+EPS ${f.eps} 每股净资产${f.bps} 负债率${f.debtRatio}%
+
+AI报告：
+${report.substring(0, 800)}
+
+请只列出与真实数据偏差超过20%的数字（格式：字段名：报告值 ≠ 真实值）。如果没有偏差，回复"数据一致，无偏差"。`;
+          try {
+            const vResult = await callAI(vPrompt, AI_VALIDATE_MODEL);
+            validated = true;
+            validationNote = vResult.includes('数据一致') || vResult.includes('无偏差') ? '数据校验通过' : vResult;
+          } catch(e) { validationNote = ''; }
+        }
+
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-        res.end(JSON.stringify({ name: quote.name, code: code, report }));
+        res.end(JSON.stringify({ name: quote.name, code: code, report, validated, validationNote }));
       } catch (e) {
         res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({ error: e.message }));
