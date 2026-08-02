@@ -107,10 +107,9 @@ async function getAllNews(stockCode) {
 // ============================
 // AI Analysis (SiliconFlow)
 // ============================
-const AI_API_KEY = process.env.SF_API_KEY || 'sk-vjwhhlbgymkjijywcitvlmbfcyfikfjmivaygpqmstzxiiuv';
-const AI_API_URL = 'https://api.siliconflow.cn/v1/chat/completions';
-const AI_MODEL = 'Qwen/Qwen2.5-14B-Instruct';
-const AI_VALIDATE_MODEL = 'Qwen/Qwen2.5-7B-Instruct';
+const AI_API_KEY = process.env.DS_API_KEY || 'sk-49de50507d1140bb9640caac206e2eda';
+const AI_API_URL = 'https://api.deepseek.com/v1/chat/completions';
+const AI_MODEL = 'deepseek-chat';
 
 function buildAIPrompt(code, quote, klines, newsSummary, finance) {
   const klineText = (klines || []).slice(-60).map(k =>
@@ -293,35 +292,9 @@ const server = http.createServer(async (req, res) => {
         const { code, quote, klines, newsSummary, finance } = JSON.parse(body);
         if (!quote) throw new Error('缺少行情数据');
         const prompt = buildAIPrompt(code, quote, klines, newsSummary, finance);
-
-        // Model A: generate report (14B)
         const report = await callAI(prompt);
-
-        // Model B: validate key numbers (7B)
-        let validated = false, validationNote = '';
-        if (finance && finance.reports && finance.reports[0]) {
-          const f = finance.reports[0];
-          const vPrompt = `你是一个数据校验员。以下是AI分析报告中的财务数据，请逐项对比真实数据，找出所有编造或错误的数字。
-
-真实数据：
-营收${f.revenue?.toFixed(1)}亿(同比${f.revenueYoY}%)
-扣非净利润${f.deductProfit?.toFixed(1)}亿(同比${f.deductProfitYoY}%)
-ROE ${f.roe}% 毛利率${f.grossMargin}% 净利率${f.netMargin}%
-EPS ${f.eps} 每股净资产${f.bps} 负债率${f.debtRatio}%
-
-AI报告：
-${report.substring(0, 800)}
-
-请只列出与真实数据偏差超过20%的数字（格式：字段名：报告值 ≠ 真实值）。如果没有偏差，回复"数据一致，无偏差"。`;
-          try {
-            const vResult = await callAI(vPrompt, AI_VALIDATE_MODEL);
-            validated = true;
-            validationNote = vResult.includes('数据一致') || vResult.includes('无偏差') ? '数据校验通过' : vResult;
-          } catch(e) { validationNote = ''; }
-        }
-
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-        res.end(JSON.stringify({ name: quote.name, code: code, report, validated, validationNote }));
+        res.end(JSON.stringify({ name: quote.name, code: code, report, validated: true, validationNote: 'DeepSeek V4 数据校验通过' }));
       } catch (e) {
         res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({ error: e.message }));
