@@ -111,23 +111,40 @@ const AI_API_KEY = process.env.SF_API_KEY || 'sk-vjwhhlbgymkjijywcitvlmbfcyfikfj
 const AI_API_URL = 'https://api.siliconflow.cn/v1/chat/completions';
 const AI_MODEL = 'Qwen/Qwen2.5-7B-Instruct';
 
-function buildAIPrompt(code, quote, klines, newsSummary) {
+function buildAIPrompt(code, quote, klines, newsSummary, finance) {
   const klineText = (klines || []).slice(-60).map(k =>
     `${k.date} 开${k.open} 收${k.close} 高${k.high} 低${k.low} 量${(k.volume/10000).toFixed(1)}万手`
   ).join('|');
 
-  return `你是一位资深A股分析师，请对股票${quote.name}(${code})生成一份专业深度分析报告。要求六大维度，每个维度200字以上，总报告1200字以上。用数据说话，给出明确判断，不要模棱两可。
+  let financeText = '';
+  if (finance && finance.reports && finance.reports.length) {
+    const r = finance.reports;
+    financeText = `
+【真实财报数据 — 禁止编造，必须使用以下数据】
+报告期：${r[0].reportDate} ${r[0].reportType}
+营业收入：${r[0].revenue?.toFixed(1)}亿 同比增速：${r[0].revenueYoY}%
+扣非净利润：${r[0].deductProfit?.toFixed(1)}亿 同比增速：${r[0].deductProfitYoY}%
+ROE：${r[0].roe}% 毛利率：${r[0].grossMargin}% 净利率：${r[0].netMargin}%
+每股收益：${r[0].eps} 每股净资产：${r[0].bps} 资产负债率：${r[0].debtRatio}%
+历年对比：${r.slice(0,3).map(x=>`${x.reportDate}(${x.reportType}):营收${x.revenueYoY}%/扣非${x.deductProfitYoY}%/ROE${x.roe}%`).join('; ')}`;
+  }
+
+  return `你是一位资深A股分析师，请对股票${quote.name}(${code})生成一份专业深度分析报告。要求六大维度，每个维度200字以上，总报告1200字以上。用数据说话，给出明确判断，不要模棱两可。重要：股票代码必须是${code}(${quote.name})，严禁使用其他代码或名称。财报数据下文中已提供真实值，严禁编造营收金额、净利润、毛利率等任何数字。
 
 【实时行情】
 现价${quote.price} | 涨跌${quote.changePct}% | 今开${quote.open} | 昨收${quote.prevClose}
 最高${quote.high} | 最低${quote.low} | 成交${quote.amount}亿 | 换手${quote.turnover}%
 振幅${quote.amplitude}% | 量比${quote.volumeRatio} | PE(TTM)${quote.pe} | PB${quote.pb} | 总市值${quote.totalCap}亿
 
+${financeText}
+
 【近60日K线】日期 开 收 高 低 量
 ${klineText || '暂无'}
 
 【近期资讯】
 ${newsSummary || '暂无'}
+
+注意：基本面分析必须引用上述财报数据中的真实数字，不得自行编造营收和净利润。年份必须用财报数据中提供的真实年份。`;
 
 请严格按以下六大维度输出报告（每个维度必须有小标题和150字以上分析）：
 
@@ -271,9 +288,9 @@ const server = http.createServer(async (req, res) => {
     req.on('data', c => body += c);
     req.on('end', async () => {
       try {
-        const { code, quote, klines, newsSummary } = JSON.parse(body);
+        const { code, quote, klines, newsSummary, finance } = JSON.parse(body);
         if (!quote) throw new Error('缺少行情数据');
-        const prompt = buildAIPrompt(code, quote, klines, newsSummary);
+        const prompt = buildAIPrompt(code, quote, klines, newsSummary, finance);
         const report = await callAI(prompt);
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({ name: quote.name, code: code, report }));
