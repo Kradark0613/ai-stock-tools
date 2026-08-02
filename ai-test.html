@@ -119,9 +119,10 @@ async function analyze() {
 
   const updateStep = s => { const el = document.getElementById('stepText'); if (el) el.textContent = s; };
 
+  let quote, finData;
   try {
     updateStep('正在获取行情数据...');
-    const quote = await fetchQuote(code);
+    quote = await fetchQuote(code);
     if (!quote) throw new Error('未找到该股票');
 
     updateStep('正在获取 K 线数据...');
@@ -132,7 +133,7 @@ async function analyze() {
 
     updateStep('正在获取财报数据...');
     const finResp = await fetch(`/api/finance?stock=${code}`);
-    const finData = await finResp.json();
+    finData = await finResp.json();
 
     updateStep('AI 正在生成六维分析报告，约需 10-20 秒...');
     const resp = await fetch('/api/ai-analyze', {
